@@ -1,0 +1,6 @@
+{
+  "name": "Sunwing",
+  "description": "A tactile 60fps arcade flight game with dynamic sky cycles, responsive flap physics, and procedural audio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
