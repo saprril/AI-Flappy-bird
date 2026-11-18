@@ -5,7 +5,8 @@ import { PauseModal } from './components/PauseModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { soundEngine } from './game/audio';
 import { SunwingEngine } from './game/engine';
-import { DifficultyMode, HudSnapshot } from './game/types';
+import type { DifficultyMode } from './types/DifficultyMode';
+import type { HudSnapshot } from './types/HudSnapshot';
 
 const INITIAL_HUD: HudSnapshot = {
   gameState: 'TITLE_MENU',
@@ -76,9 +77,7 @@ export function App() {
 
       if (hud.gameState === 'TITLE_MENU') {
         if (isStartKey && !e.repeat) {
-          // Avoid hijacking Enter/Space if user focused a specific difficulty button
-          const activeTag = document.activeElement?.tagName;
-          if (activeTag === 'BUTTON') return;
+          if (document.activeElement?.tagName === 'BUTTON') return;
           e.preventDefault();
           engine.startNewRun();
         }
@@ -93,13 +92,10 @@ export function App() {
         return;
       }
 
-      if (hud.gameState === 'GAME_OVER') {
-        if (isStartKey && !e.repeat) {
-          const activeTag = document.activeElement?.tagName;
-          if (activeTag === 'BUTTON') return;
-          e.preventDefault();
-          engine.handleFlapAction();
-        }
+      if (hud.gameState === 'GAME_OVER' && isStartKey && !e.repeat) {
+        if (document.activeElement?.tagName === 'BUTTON') return;
+        e.preventDefault();
+        engine.handleFlapAction();
       }
     };
 
@@ -132,7 +128,6 @@ export function App() {
 
   return (
     <main className="relative w-screen h-screen overflow-hidden select-none bg-[#1B3B5A]">
-      {/* Isolated full-viewport game canvas */}
       <canvas
         ref={canvasRef}
         onPointerDown={handleCanvasPointerDown}

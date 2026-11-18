@@ -1,5 +1,5 @@
 import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
-import { GameState } from '../game/types';
+import type { GameState } from '../types/GameState';
 
 interface HudOverlayProps {
   gameState: GameState;
@@ -20,25 +20,18 @@ export function HudOverlay({
 }: HudOverlayProps) {
   return (
     <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-4 sm:p-6">
-      {/* Top perimeter HUD */}
       <div className="relative flex items-start justify-between">
-        {/* Left: compact unboxed best score */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/55 text-white text-xs sm:text-sm font-medium">
           <span className="text-slate-200">Best</span>
           <span className="font-mono-num font-bold text-amber-300">{bestScore}</span>
         </div>
 
-        {/* Center: crisp tabular score counter */}
-        <div
-          aria-live="polite"
-          className="absolute left-1/2 -translate-x-1/2 top-1 sm:top-0 text-center"
-        >
+        <div aria-live="polite" className="absolute left-1/2 -translate-x-1/2 top-1 sm:top-0 text-center">
           <span className="font-mono-num font-bold text-5xl sm:text-6xl text-white drop-shadow-[0_4px_0_rgba(15,23,42,0.75)] select-none">
             {score}
           </span>
         </div>
 
-        {/* Right: Mute & Pause buttons (>=44px touch targets) */}
         <div className="flex items-center gap-2 pointer-events-auto">
           <button
             type="button"

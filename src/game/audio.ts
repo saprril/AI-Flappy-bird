@@ -1,28 +1,28 @@
-const MUTE_STORAGE_KEY = 'sunwing_muted_v1';
+import { loadMutePreference, saveMutePreference } from './storage';
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private muted: boolean;
 
   constructor() {
-    try {
-      this.muted = localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
-    } catch {
-      this.muted = false;
-    }
+    this.muted = loadMutePreference();
   }
 
   private ensureContext(): AudioContext | null {
-    if (this.muted) return null;
-    if (typeof window === 'undefined') return null;
+    if (this.muted || typeof window === 'undefined') return null;
+
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return null;
       this.ctx = new AudioCtx();
     }
+
     if (this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
+
     return this.ctx;
   }
 
@@ -36,11 +36,7 @@ class SoundEngine {
 
   public setMuted(mute: boolean): void {
     this.muted = mute;
-    try {
-      localStorage.setItem(MUTE_STORAGE_KEY, String(mute));
-    } catch {
-      // ignore storage errors
-    }
+    saveMutePreference(mute);
   }
 
   public toggleMute(): boolean {
@@ -78,7 +74,7 @@ class SoundEngine {
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    const notes = [987.77, 1318.51]; // B5 -> E6
+    const notes = [987.77, 1318.51];
     notes.forEach((freq, i) => {
       const t = now + i * 0.065;
       const osc = ctx.createOscillator();
@@ -102,7 +98,7 @@ class SoundEngine {
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    const notes = [1174.66, 1479.98, 1760.0]; // D6 -> F#6 -> A6
+    const notes = [1174.66, 1479.98, 1760.0];
     notes.forEach((freq, i) => {
       const t = now + i * 0.045;
       const osc = ctx.createOscillator();
@@ -151,7 +147,6 @@ class SoundEngine {
 
     const now = ctx.currentTime;
 
-    // Low impact thud
     const osc = ctx.createOscillator();
     const oscGain = ctx.createGain();
     osc.type = 'sawtooth';
@@ -166,13 +161,13 @@ class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.25);
 
-    // Filtered noise burst for crunch
     const bufferSize = Math.floor(ctx.sampleRate * 0.12);
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
       data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
     }
+
     const noise = ctx.createBufferSource();
     noise.buffer = buffer;
 

@@ -1,25 +1,25 @@
+import type { BirdState } from '../types/BirdState';
+import type { BonusCoin } from '../types/BonusCoin';
+import type { Cloud } from '../types/Cloud';
+import type { DifficultyMode } from '../types/DifficultyMode';
+import type { FloatingText } from '../types/FloatingText';
+import type { GameState } from '../types/GameState';
+import type { HudSnapshot } from '../types/HudSnapshot';
+import type { Particle } from '../types/Particle';
+import type { ParticleKind } from '../types/ParticleKind';
+import type { PipePair } from '../types/PipePair';
+import type { Star } from '../types/Star';
 import { soundEngine } from './audio';
-import { renderGame } from './renderer';
+import { checkBirdPipeCollision } from './collision';
 import {
-  BirdState,
-  BonusCoin,
-  Cloud,
   DIFFICULTY_CONFIGS,
-  DifficultyMode,
-  FloatingText,
-  GameState,
-  HudSnapshot,
-  Particle,
-  ParticleKind,
-  PipePair,
+  FLOATING_TEXT_POOL_SIZE,
+  PARTICLE_POOL_SIZE,
   PLAYABLE_HEIGHT,
-  Star,
   WORLD_HEIGHT,
-} from './types';
-
-const BEST_SCORE_STORAGE_KEY = 'sunwing_best_scores_v1';
-const PARTICLE_POOL_SIZE = 120;
-const FLOATING_TEXT_POOL_SIZE = 16;
+} from './constants';
+import { renderGame } from './render/renderGame';
+import { loadBestScores, saveBestScores } from './storage';
 
 export class SunwingEngine {
   private canvas: HTMLCanvasElement;
@@ -41,20 +41,20 @@ export class SunwingEngine {
   private isNewBest = false;
   private gameOverAt = 0;
 
-  // Input buffering & hitstop
+  // Input buffering & impact feel
   private bufferedFlapUntil = 0;
   private hitstopTimer = 0;
   private shakeTime = 0;
   private shakeIntensity = 0;
   private hitFlashAlpha = 0;
 
-  // World scroll & sky cycle
+  // World progression
   private scrollDistance = 0;
   private skyProgress = 0;
   private nextPipeId = 1;
   private nextCoinId = 1;
 
-  // Entities & pools
+  // Entities & pre-allocated pools
   private bird: BirdState;
   private pipes: PipePair[] = [];
   private coins: BonusCoin[] = [];
@@ -69,40 +69,16 @@ export class SunwingEngine {
     if (!context) {
       throw new Error('Could not acquire 2D canvas context');
     }
+
     this.ctx = context;
     this.onHudChange = onHudChange;
-    this.bestScores = this.loadBestScores();
+    this.bestScores = loadBestScores();
 
     this.bird = this.createInitialBird();
     this.initPools();
     this.initAtmosphere();
     this.resize();
     this.emitHud();
-  }
-
-  private loadBestScores(): Record<DifficultyMode, number> {
-    try {
-      const raw = localStorage.getItem(BEST_SCORE_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<Record<DifficultyMode, number>>;
-        return {
-          breezy: Number(parsed.breezy) || 0,
-          classic: Number(parsed.classic) || 0,
-          turbo: Number(parsed.turbo) || 0,
-        };
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return { breezy: 0, classic: 0, turbo: 0 };
-  }
-
-  private saveBestScore(): void {
-    try {
-      localStorage.setItem(BEST_SCORE_STORAGE_KEY, JSON.stringify(this.bestScores));
-    } catch {
-      // ignore storage errors
-    }
   }
 
   private createInitialBird(): BirdState {
@@ -171,6 +147,7 @@ export class SunwingEngine {
   public startLoop(): void {
     if (this.rafId) return;
     this.lastTimestamp = performance.now();
+
     const tick = (now: number) => {
       const rawDt = (now - this.lastTimestamp) / 1000;
       this.lastTimestamp = now;
@@ -180,6 +157,7 @@ export class SunwingEngine {
       this.render();
       this.rafId = requestAnimationFrame(tick);
     };
+
     this.rafId = requestAnimationFrame(tick);
   }
 
@@ -202,7 +180,6 @@ export class SunwingEngine {
     const aspect = cssWidth / Math.max(1, cssHeight);
     this.worldWidth = Math.max(360, WORLD_HEIGHT * aspect);
 
-    // Keep bird positioned cleanly on narrow or wide screens
     const targetBirdX = Math.min(260, Math.max(96, this.worldWidth * 0.28));
     if (this.gameState === 'TITLE_MENU' || this.gameState === 'READY') {
       this.bird.x = targetBirdX;
@@ -269,11 +246,8 @@ export class SunwingEngine {
       return;
     }
 
-    if (this.gameState === 'GAME_OVER') {
-      // Brief 380ms safety cooldown so a death-flap doesn't skip the score card
-      if (nowMs - this.gameOverAt > 380) {
-        this.startNewRun();
-      }
+    if (this.gameState === 'GAME_OVER' && nowMs - this.gameOverAt > 380) {
+      this.startNewRun();
     }
   }
 
@@ -290,6 +264,7 @@ export class SunwingEngine {
     this.hitFlashAlpha = 0;
     this.skyProgress = 0;
     this.bufferedFlapUntil = 0;
+
     this.bird = this.createInitialBird();
     this.bird.x = Math.min(260, Math.max(96, this.worldWidth * 0.28));
 
@@ -310,7 +285,6 @@ export class SunwingEngine {
     this.bird.wingPhase = 0;
     soundEngine.playFlap();
 
-    // Subtle feather & air puff burst
     for (let i = 0; i < 4; i++) {
       this.spawnParticle(
         'feather',
@@ -351,7 +325,6 @@ export class SunwingEngine {
     const minMargin = 74 + gapHeight / 2;
     const maxMargin = PLAYABLE_HEIGHT - 74 - gapHeight / 2;
 
-    // Smoothly constrain vertical delta from previous pipe so gaps are always fair
     let gapY = minMargin + Math.random() * Math.max(20, maxMargin - minMargin);
     if (this.pipes.length > 0) {
       const prevGapY = this.pipes[this.pipes.length - 1].baseGapY;
@@ -378,7 +351,6 @@ export class SunwingEngine {
     };
     this.pipes.push(pipe);
 
-    // Every 3rd pipe, spawn a bonus star coin
     if (pipe.id % 3 === 0) {
       const coinOffset = (Math.random() - 0.5) * (gapHeight * 0.36);
       this.coins.push({
@@ -395,7 +367,6 @@ export class SunwingEngine {
   private update(dt: number, nowMs: number): void {
     this.elapsedTime += dt;
 
-    // Decay screen flash & camera shake even during hitstop
     if (this.hitFlashAlpha > 0) {
       this.hitFlashAlpha = Math.max(0, this.hitFlashAlpha - dt * 4.5);
     }
@@ -412,33 +383,17 @@ export class SunwingEngine {
       return;
     }
 
-    // Check input buffer
     if (this.gameState === 'PLAYING' && this.bufferedFlapUntil > nowMs) {
       this.bufferedFlapUntil = 0;
       this.executeFlap();
     }
 
-    // Update particles & floating texts in all non-paused states
     this.updateParticles(dt);
     this.updateFloatingTexts(dt);
-
-    // Update bird blink & squash-and-stretch relaxation
-    this.bird.scaleX += (1 - this.bird.scaleX) * Math.min(1, dt * 14);
-    this.bird.scaleY += (1 - this.bird.scaleY) * Math.min(1, dt * 14);
-    this.updateBlink(dt);
-
-    // Cloud drift
-    for (let i = 0; i < this.clouds.length; i++) {
-      const c = this.clouds[i];
-      const baseDrift = this.gameState === 'GAME_OVER' ? 10 : 32;
-      c.x -= baseDrift * c.speedFactor * dt * 2.2;
-      if (c.x < -120) {
-        c.x = this.worldWidth + 120;
-      }
-    }
+    this.updateBirdCosmetics(dt);
+    this.updateClouds(dt);
 
     if (this.gameState === 'TITLE_MENU') {
-      // Live panning atmospheric world
       this.scrollDistance += 110 * dt;
       this.skyProgress = (this.elapsedTime * 0.03) % 3;
       this.bird.y = PLAYABLE_HEIGHT * 0.46 + Math.sin(this.elapsedTime * 3.2) * 12;
@@ -457,7 +412,6 @@ export class SunwingEngine {
     }
 
     if (this.gameState === 'GAME_OVER') {
-      // Bird drops cleanly to the ground after collision
       if (this.bird.y + this.bird.radius < PLAYABLE_HEIGHT) {
         this.bird.vy = Math.min(720, this.bird.vy + 1650 * dt);
         this.bird.y = Math.min(PLAYABLE_HEIGHT - this.bird.radius, this.bird.y + this.bird.vy * dt);
@@ -466,7 +420,37 @@ export class SunwingEngine {
       return;
     }
 
-    // Active PLAYING simulation
+    this.stepActiveFlight(dt, nowMs);
+  }
+
+  private updateBirdCosmetics(dt: number): void {
+    this.bird.scaleX += (1 - this.bird.scaleX) * Math.min(1, dt * 14);
+    this.bird.scaleY += (1 - this.bird.scaleY) * Math.min(1, dt * 14);
+
+    this.bird.blinkTimer -= dt;
+    if (this.bird.blinkTimer <= 0) {
+      if (this.bird.isBlinking) {
+        this.bird.isBlinking = false;
+        this.bird.blinkTimer = 2.0 + Math.random() * 2.5;
+      } else {
+        this.bird.isBlinking = true;
+        this.bird.blinkTimer = 0.11;
+      }
+    }
+  }
+
+  private updateClouds(dt: number): void {
+    const baseDrift = this.gameState === 'GAME_OVER' ? 10 : 32;
+    for (let i = 0; i < this.clouds.length; i++) {
+      const cloud = this.clouds[i];
+      cloud.x -= baseDrift * cloud.speedFactor * dt * 2.2;
+      if (cloud.x < -120) {
+        cloud.x = this.worldWidth + 120;
+      }
+    }
+  }
+
+  private stepActiveFlight(dt: number, nowMs: number): void {
     const cfg = DIFFICULTY_CONFIGS[this.difficulty];
     const speed = this.getCurrentPipeSpeed();
     this.scrollDistance += speed * dt;
@@ -477,14 +461,12 @@ export class SunwingEngine {
     if (diff < -1.5) diff += 3;
     this.skyProgress = (this.skyProgress + diff * Math.min(1, dt * 1.4)) % 3;
 
-    // Bird physics
+    // Vertical gravity & velocity
     this.bird.vy = Math.min(cfg.terminalVelocity, this.bird.vy + cfg.gravity * dt);
     this.bird.y += this.bird.vy * dt;
-
-    // Wing flap rate responds to vertical velocity
     this.bird.wingPhase += dt * (this.bird.vy < 0 ? 22 : 10);
 
-    // Pitch rotation: snap up on flap, smoothly nose down on descent
+    // Velocity-reactive pitch rotation
     if (this.bird.vy < 90) {
       this.bird.rotation += (-0.42 - this.bird.rotation) * Math.min(1, dt * 12);
     } else {
@@ -493,7 +475,7 @@ export class SunwingEngine {
       this.bird.rotation += (targetRot - this.bird.rotation) * Math.min(1, dt * 8.5);
     }
 
-    // Ceiling clamp (soft bounce so you don't fly blindly off-screen)
+    // Soft ceiling clamp
     if (this.bird.y - this.bird.radius < 0) {
       this.bird.y = this.bird.radius;
       this.bird.vy = Math.max(0, this.bird.vy);
@@ -506,7 +488,7 @@ export class SunwingEngine {
       return;
     }
 
-    // Update pipes & spawn ahead
+    // Update pipes & check collisions
     for (let i = this.pipes.length - 1; i >= 0; i--) {
       const pipe = this.pipes[i];
       pipe.x -= speed * dt;
@@ -516,15 +498,13 @@ export class SunwingEngine {
         pipe.gapY = pipe.baseGapY + Math.sin(pipe.movePhase) * pipe.moveAmplitude;
       }
 
-      // Score check when bird passes center of pipe
       if (!pipe.scored && pipe.x + pipe.width / 2 < this.bird.x) {
         pipe.scored = true;
         this.pipesCleared += 1;
         this.addScore(1, pipe.x + pipe.width / 2, pipe.gapY, '#FFFFFF');
       }
 
-      // Collision check (circle vs AABB top & bottom pipe rects)
-      if (this.checkBirdPipeCollision(pipe)) {
+      if (checkBirdPipeCollision(this.bird, pipe)) {
         this.triggerCrash(nowMs);
         return;
       }
@@ -534,14 +514,14 @@ export class SunwingEngine {
       }
     }
 
-    // Spawn next pipe when rightmost pipe advances
+    // Spawn ahead pipe
     const lastPipe = this.pipes[this.pipes.length - 1];
     if (!lastPipe || lastPipe.x < this.worldWidth + 80) {
       const nextX = lastPipe ? lastPipe.x + cfg.pipeSpacing : this.worldWidth + 80;
       this.spawnPipeAt(nextX);
     }
 
-    // Update coins
+    // Update & collect bonus coins
     for (let i = this.coins.length - 1; i >= 0; i--) {
       const coin = this.coins[i];
       coin.x -= speed * dt;
@@ -550,35 +530,36 @@ export class SunwingEngine {
         const dx = this.bird.x - coin.x;
         const dy = this.bird.y - coin.y;
         const hitDist = this.bird.radius + coin.radius;
+
         if (dx * dx + dy * dy <= hitDist * hitDist) {
           coin.collected = true;
           this.coinsCollected += 1;
           soundEngine.playCoin();
           this.addScore(2, coin.x, coin.y - 12, '#FDE047', true);
-
-          // Sparkle burst
-          this.spawnParticle('ring', coin.x, coin.y, 0, 0, 12, 0.35, '#FDE047');
-          for (let k = 0; k < 10; k++) {
-            const ang = (Math.PI * 2 * k) / 10;
-            this.spawnParticle(
-              'spark',
-              coin.x,
-              coin.y,
-              Math.cos(ang) * (90 + Math.random() * 50),
-              Math.sin(ang) * (90 + Math.random() * 50),
-              5,
-              0.42,
-              k % 2 === 0 ? '#FEF08A' : '#F59E0B'
-            );
-          }
+          this.emitCoinBurst(coin.x, coin.y);
         }
       }
 
-      if (coin.x < -40 || coin.collected) {
-        if (coin.collected || coin.x < -40) {
-          this.coins.splice(i, 1);
-        }
+      if (coin.collected || coin.x < -40) {
+        this.coins.splice(i, 1);
       }
+    }
+  }
+
+  private emitCoinBurst(x: number, y: number): void {
+    this.spawnParticle('ring', x, y, 0, 0, 12, 0.35, '#FDE047');
+    for (let k = 0; k < 10; k++) {
+      const ang = (Math.PI * 2 * k) / 10;
+      this.spawnParticle(
+        'spark',
+        x,
+        y,
+        Math.cos(ang) * (90 + Math.random() * 50),
+        Math.sin(ang) * (90 + Math.random() * 50),
+        5,
+        0.42,
+        k % 2 === 0 ? '#FEF08A' : '#F59E0B'
+      );
     }
   }
 
@@ -590,7 +571,7 @@ export class SunwingEngine {
     if (this.score > this.bestScores[this.difficulty]) {
       this.bestScores[this.difficulty] = this.score;
       this.isNewBest = true;
-      this.saveBestScore();
+      saveBestScores(this.bestScores);
     }
 
     if (!isCoin) {
@@ -607,32 +588,6 @@ export class SunwingEngine {
     this.emitHud();
   }
 
-  private checkBirdPipeCollision(pipe: PipePair): boolean {
-    const bx = this.bird.x;
-    const by = this.bird.y;
-    const r = this.bird.hitboxRadius;
-
-    const topHeight = pipe.gapY - pipe.gapHeight / 2;
-    const bottomY = pipe.gapY + pipe.gapHeight / 2;
-
-    if (this.circleIntersectsRect(bx, by, r, pipe.x, 0, pipe.width, topHeight)) {
-      return true;
-    }
-    if (this.circleIntersectsRect(bx, by, r, pipe.x, bottomY, pipe.width, PLAYABLE_HEIGHT - bottomY)) {
-      return true;
-    }
-    return false;
-  }
-
-  private circleIntersectsRect(cx: number, cy: number, r: number, rx: number, ry: number, rw: number, rh: number): boolean {
-    if (rw <= 0 || rh <= 0) return false;
-    const closestX = Math.max(rx, Math.min(cx, rx + rw));
-    const closestY = Math.max(ry, Math.min(cy, ry + rh));
-    const dx = cx - closestX;
-    const dy = cy - closestY;
-    return dx * dx + dy * dy < r * r;
-  }
-
   private triggerCrash(nowMs: number): void {
     this.bird.dead = true;
     this.bird.scaleX = 1.24;
@@ -640,7 +595,6 @@ export class SunwingEngine {
     this.gameState = 'GAME_OVER';
     this.gameOverAt = nowMs;
 
-    // 45ms hitstop + screen shake + flash + feather/dust burst
     this.hitstopTimer = 0.045;
     this.shakeTime = 0.28;
     this.shakeIntensity = 11;
@@ -663,19 +617,6 @@ export class SunwingEngine {
     }
 
     this.emitHud();
-  }
-
-  private updateBlink(dt: number): void {
-    this.bird.blinkTimer -= dt;
-    if (this.bird.blinkTimer <= 0) {
-      if (this.bird.isBlinking) {
-        this.bird.isBlinking = false;
-        this.bird.blinkTimer = 2.0 + Math.random() * 2.5;
-      } else {
-        this.bird.isBlinking = true;
-        this.bird.blinkTimer = 0.11;
-      }
-    }
   }
 
   private spawnParticle(
@@ -713,11 +654,13 @@ export class SunwingEngine {
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
       if (!p.active) continue;
+
       p.life += dt;
       if (p.life >= p.maxLife) {
         p.active = false;
         continue;
       }
+
       const progress = p.life / p.maxLife;
       if (p.kind === 'ring') {
         p.size += dt * 78;
@@ -753,6 +696,7 @@ export class SunwingEngine {
     for (let i = 0; i < this.floatingTexts.length; i++) {
       const ft = this.floatingTexts[i];
       if (!ft.active) continue;
+
       ft.life += dt;
       if (ft.life >= ft.maxLife) {
         ft.active = false;

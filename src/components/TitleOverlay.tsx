@@ -1,5 +1,6 @@
 import { Volume2, VolumeX } from 'lucide-react';
-import { DIFFICULTY_CONFIGS, DifficultyMode } from '../game/types';
+import { DIFFICULTY_CONFIGS, DIFFICULTY_MODES } from '../game/constants';
+import type { DifficultyMode } from '../types/DifficultyMode';
 
 interface TitleOverlayProps {
   difficulty: DifficultyMode;
@@ -9,8 +10,6 @@ interface TitleOverlayProps {
   onStart: () => void;
   onToggleMute: () => void;
 }
-
-const MODES: DifficultyMode[] = ['breezy', 'classic', 'turbo'];
 
 export function TitleOverlay({
   difficulty,
@@ -22,7 +21,6 @@ export function TitleOverlay({
 }: TitleOverlayProps) {
   return (
     <div className="fixed inset-0 z-10 flex flex-col justify-between pointer-events-none p-5 sm:p-8">
-      {/* Top utility row */}
       <div className="flex items-center justify-end">
         <button
           type="button"
@@ -34,9 +32,7 @@ export function TitleOverlay({
         </button>
       </div>
 
-      {/* Center-top calm sky lockup & action panel */}
       <div className="flex flex-col items-center text-center my-auto max-w-md mx-auto w-full">
-        {/* Bespoke inline SVG Title Lockup */}
         <div className="mb-5">
           <svg
             viewBox="0 0 340 96"
@@ -51,7 +47,6 @@ export function TitleOverlay({
                 <stop offset="100%" stopColor="#EA580C" />
               </linearGradient>
             </defs>
-            {/* Wing crest emblem left of wordmark */}
             <g transform="translate(18, 22)">
               <path
                 d="M4 28 C12 8, 36 4, 52 10 C38 16, 30 24, 24 34 C34 26, 46 24, 56 26 C40 34, 26 42, 10 44 Z"
@@ -83,16 +78,14 @@ export function TitleOverlay({
           </svg>
         </div>
 
-        {/* Clean tactile launch card */}
         <div className="pointer-events-auto w-full rounded-2xl bg-slate-900/80 border border-white/15 p-5 sm:p-6 shadow-xl text-white">
-          {/* Difficulty segmented selector */}
           <div className="mb-4">
             <div
               role="group"
               aria-label="Flight speed mode"
               className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-950/60 border border-white/10"
             >
-              {MODES.map((mode) => {
+              {DIFFICULTY_MODES.map((mode) => {
                 const active = mode === difficulty;
                 return (
                   <button
@@ -112,7 +105,6 @@ export function TitleOverlay({
             </div>
           </div>
 
-          {/* Unboxed clean best score metadata */}
           <div className="flex items-center justify-center gap-2 text-sm text-slate-200 mb-5">
             <span>Best Score</span>
             <span aria-hidden="true">·</span>
@@ -121,7 +113,6 @@ export function TitleOverlay({
             <span>{DIFFICULTY_CONFIGS[difficulty].label}</span>
           </div>
 
-          {/* Primary Start CTA */}
           <button
             type="button"
             onClick={onStart}
@@ -132,7 +123,6 @@ export function TitleOverlay({
         </div>
       </div>
 
-      {/* Single flat control-hint line */}
       <div className="text-center pb-1">
         <p className="inline-block text-xs sm:text-sm font-medium text-white drop-shadow-[0_2px_4px_rgba(15,23,42,0.85)] tracking-wide">
           Space / Click Flap · P / Esc Pause · M Mute

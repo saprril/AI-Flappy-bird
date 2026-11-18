@@ -1,4 +1,7 @@
-import { DIFFICULTY_CONFIGS, DifficultyMode, getMedalTier, MedalTier } from '../game/types';
+import { DIFFICULTY_CONFIGS } from '../game/constants';
+import { getMedalTier, MEDAL_LABELS } from '../game/medals';
+import type { DifficultyMode } from '../types/DifficultyMode';
+import { MedalCrest } from './MedalCrest';
 
 interface GameOverModalProps {
   score: number;
@@ -9,46 +12,6 @@ interface GameOverModalProps {
   coinsCollected: number;
   onPlayAgain: () => void;
   onTitleMenu: () => void;
-}
-
-const MEDAL_LABELS: Record<MedalTier, string> = {
-  none: 'No Medal',
-  bronze: 'Bronze Medal',
-  silver: 'Silver Medal',
-  gold: 'Gold Medal',
-  platinum: 'Platinum Medal',
-};
-
-function MedalCrest({ tier }: { tier: MedalTier }) {
-  if (tier === 'none') {
-    return (
-      <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center text-slate-500 text-xs font-semibold">
-        10+
-      </div>
-    );
-  }
-
-  const palettes: Record<Exclude<MedalTier, 'none'>, { outer: string; inner: string; rim: string; star: string }> = {
-    bronze: { outer: '#CD7F32', inner: '#E5A464', rim: '#7C4212', star: '#FFFBEB' },
-    silver: { outer: '#CBD5E1', inner: '#F1F5F9', rim: '#475569', star: '#FFFFFF' },
-    gold: { outer: '#F59E0B', inner: '#FDE047', rim: '#78350F', star: '#FFFFFF' },
-    platinum: { outer: '#38BDF8', inner: '#E0F2FE', rim: '#0C4A6E', star: '#FFFFFF' },
-  };
-  const p = palettes[tier];
-
-  return (
-    <svg viewBox="0 0 64 64" className="w-16 h-16 drop-shadow-md" aria-hidden="true">
-      <circle cx="32" cy="32" r="28" fill={p.outer} stroke={p.rim} strokeWidth="3" />
-      <circle cx="32" cy="32" r="21" fill={p.inner} />
-      <polygon
-        points="32,16 36.4,25.5 46.8,26.8 39.2,34 41.2,44.4 32,39.2 22.8,44.4 24.8,34 17.2,26.8 27.6,25.5"
-        fill={p.star}
-        stroke={p.rim}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 export function GameOverModal({
@@ -86,7 +49,6 @@ export function GameOverModal({
           </p>
         </div>
 
-        {/* Medal + Primary Score Row */}
         <div className="flex items-center justify-between gap-5 rounded-xl bg-slate-950/60 border border-white/10 p-4 mb-4">
           <div className="flex flex-col items-center gap-1.5 min-w-[76px]">
             <MedalCrest tier={medal} />
@@ -105,7 +67,6 @@ export function GameOverModal({
           </div>
         </div>
 
-        {/* Clean unboxed run breakdown */}
         <div className="flex items-center justify-center gap-3 text-xs text-slate-300 mb-5">
           <span>
             Pipes <strong className="font-mono-num text-white">{pipesCleared}</strong>
@@ -116,7 +77,6 @@ export function GameOverModal({
           </span>
         </div>
 
-        {/* Action buttons */}
         <div className="flex items-center gap-3">
           <button
             type="button"
